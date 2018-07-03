@@ -61,38 +61,38 @@ def clean(recipe):
     """ Clean a recipe and return the raw text
     """
     # Start with title
-    raw = _preliminary_clean(recipe.title) + '\n\n'
-    raw += _preliminary_clean(recipe.text['description']) + '\n\n'
-    raw += _split_ingreds(recipe.text['ingreds']) + '\n\n'
-    raw += _split_directions(recipe.text['directions']) + '\n\n'
+    raw = _preliminary_clean(
+        _split_asterisk(recipe.title)) + '\n\n'
+    raw += _preliminary_clean(
+        _split_asterisk(recipe.text['description'])) + '\n\n'
+    raw += _split_ingreds(
+        _split_asterisk(recipe.text['ingreds'])) + '\n\n'
+    raw += _split_directions(
+        _split_asterisk(recipe.text['directions'])) + '\n\n'
     if 'tips' in recipe.text:
-        raw += _split_tips(recipe.text['tips']) + '\n\n'
+        raw += _split_tips(
+            _split_asterisk(recipe.text['tips'])) + '\n\n'
 
     return raw
 
-def _preliminary_clean(s):
-    """
-    split on punctuation and add spaces
 
-    :param s:
-    :return:
-    """
+def _split_asterisk(s):
+    return re.sub(r'\*', r' * ', s)
+
+
+def _preliminary_clean(s):
     return ' '.join(nltk.tokenize.word_tokenize(s)).lower().strip()
 
 
 def _split_ingreds(s):
-    """
-    split on grams
-
-    :param s:
-    :return:
-    """
-    return '\n'.join([' '.join([split_trailing_g(_) for _ in nltk.tokenize.word_tokenize(_)])
+    return '\n'.join([' '.join([split_trailing_g(_)
+                                for _ in nltk.tokenize.word_tokenize(_)])
                       for _ in s.split('\n')]).lower().strip()
 
 
 def _split_tips(s):
-    return '\n'.join([' '.join(nltk.tokenize.word_tokenize(_)) for _ in s.strip().split('\n')])
+    return '\n'.join([' '.join(nltk.tokenize.word_tokenize(_))
+                      for _ in s.strip().split('\n')])
 
 
 def _split_directions(s):
