@@ -8,17 +8,30 @@
 import argparse
 
 import torch
-from torch.autograd import Variable
+
+from model import RNNModel
 
 import data
 
-parser = argparse.ArgumentParser(description='PyTorch Wikitext-2 Language Model')
+parser = argparse.ArgumentParser(description='RNN Recipe generator')
 
 # Model parameters.
 parser.add_argument('--data', type=str, default='./data/wikitext-2',
                     help='location of the data corpus')
 parser.add_argument('--checkpoint', type=str, default='./model.pt',
                     help='model checkpoint to use')
+parser.add_argument('--state-dict', type=str, default=None,
+                    help='state-dict to use')
+parser.add_argument('--model-type', type=str, default='LSTM',
+                    help='model type')
+parser.add_argument('--nemb', type=int, default=650,
+                    help='size of embedding layer')
+parser.add_argument('--nhid', type=int, default=650,
+                    help='hidden size')
+parser.add_argument('--nlayers', type=int, default=2,
+                    help='num RNN layers')
+parser.add_argument('--tie-weights', action='store_true',
+                    help='tie encode/decode weights or not')
 parser.add_argument('--outf', type=str, default='generated.txt',
                     help='output file for generated text')
 parser.add_argument('--words', type=int, default='1000',
@@ -44,12 +57,18 @@ device = torch.device("cuda" if args.cuda else "cpu")
 if args.temperature < 1e-3:
     parser.error("--temperature has to be greater or equal 1e-3")
 
-with open(args.checkpoint, 'rb') as f:
-    model = torch.load(f).to(device)
-model.eval()
-
 corpus = data.Corpus(args.data)
 ntokens = len(corpus.dictionary)
+
+if args.state_dict is None:
+    with open(args.checkpoint, 'rb') as f:
+        model = torch.load(f, map_location='cpu').to(device)
+else:
+    model = RNNModel(args.model_type, ntokens, args.nemb, args.nhid, args.nlayers, tie_weights=args.tie_weights)
+    with open(args.state_dict, 'rb') as f:
+        model.load_state_dict(torch.load(f, map_location='cpu'))
+model.eval()
+
 hidden = model.init_hidden(1)
 input = torch.randint(ntokens, (1, 1), dtype=torch.long).to(device)
 
