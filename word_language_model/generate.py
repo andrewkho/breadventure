@@ -9,9 +9,8 @@ import argparse
 
 import torch
 
-from model import RNNModel
-
-import data
+from .data import Corpus
+from .model import RNNModel
 
 parser = argparse.ArgumentParser(description='RNN Recipe generator')
 
@@ -57,7 +56,7 @@ device = torch.device("cuda" if args.cuda else "cpu")
 if args.temperature < 1e-3:
     parser.error("--temperature has to be greater or equal 1e-3")
 
-corpus = data.Corpus(args.data)
+corpus = Corpus(args.data)
 ntokens = len(corpus.dictionary)
 
 if args.state_dict is None:
