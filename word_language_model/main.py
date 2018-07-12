@@ -5,8 +5,8 @@ import torch
 import torch.nn as nn
 import torch.onnx
 
-from data import Corpus
-from model import RNNModel
+from .data import Corpus
+from .model import RNNModel
 
 parser = argparse.ArgumentParser(description='')
 parser.add_argument('--data', type=str,
@@ -198,10 +198,10 @@ try:
         print('-' * 89)
         # Save the model if the validation loss is the best we've seen so far.
         if not best_val_loss or val_loss < best_val_loss:
-            with open(args.save, 'wb') as f:
+            with open(model.get_filename(args.save), 'wb') as f:
                 torch.save(model, f)
             ## Save State Dictionary
-            with open(args.save+'_state', 'wb') as f:
+            with open(model.get_state_filename(args.save), 'wb') as f:
                 torch.save(model.state_dict(), f)
             best_val_loss = val_loss
 
@@ -211,7 +211,7 @@ except KeyboardInterrupt:
 
 
 # Load the best saved model.
-with open(args.save, 'rb') as f:
+with open(model.get_filename(args.save), 'rb') as f:
     model = torch.load(f)
     # after load the rnn params are not a continuous chunk of memory
     # this makes them a continuous chunk, and will speed up forward pass

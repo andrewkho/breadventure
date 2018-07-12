@@ -17,12 +17,8 @@ parser = argparse.ArgumentParser(description='RNN Recipe generator')
 # Model parameters.
 parser.add_argument('--data', type=str, default='./data/wikitext-2',
                     help='location of the data corpus')
-parser.add_argument('--checkpoint', type=str, default='./model.pt',
-                    help='model checkpoint to use')
-parser.add_argument('--state-dict', type=str, default=None,
-                    help='state-dict to use')
-parser.add_argument('--model-type', type=str, default='LSTM',
-                    help='model type')
+parser.add_argument('--save', type=str,
+                    help='prefix of state-dict')
 parser.add_argument('--nemb', type=int, default=650,
                     help='size of embedding layer')
 parser.add_argument('--nhid', type=int, default=650,
@@ -59,13 +55,10 @@ if args.temperature < 1e-3:
 corpus = Corpus(args.data)
 ntokens = len(corpus.dictionary)
 
-if args.state_dict is None:
-    with open(args.checkpoint, 'rb') as f:
-        model = torch.load(f, map_location='cpu').to(device)
-else:
-    model = RNNModel(args.model_type, ntokens, args.nemb, args.nhid, args.nlayers, tie_weights=args.tie_weights)
-    with open(args.state_dict, 'rb') as f:
-        model.load_state_dict(torch.load(f, map_location='cpu'))
+model = RNNModel(args.model_type, ntokens, args.nemb, args.nhid, args.nlayers, tie_weights=args.tie_weights)
+print(f'**** Loading from {model.get_state_filename(args.save)} ****')
+with open(model.get_state_filename(args.save), 'rb') as f:
+    model.load_state_dict(torch.load(f, map_location='cpu'))
 model.eval()
 
 hidden = model.init_hidden(1)
