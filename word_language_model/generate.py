@@ -45,7 +45,8 @@ args = parser.parse_args()
 torch.manual_seed(args.seed)
 if torch.cuda.is_available():
     if not args.cuda:
-        print("WARNING: You have a CUDA device, so you should probably run with --cuda")
+        print("WARNING: You have a CUDA device, so you should "
+              "probably run with --cuda")
 
 device = torch.device("cuda" if args.cuda else "cpu")
 
@@ -55,7 +56,8 @@ if args.temperature < 1e-3:
 corpus = Corpus(args.data)
 ntokens = len(corpus.dictionary)
 
-model = RNNModel(args.model_type, ntokens, args.nemb, args.nhid, args.nlayers, tie_weights=args.tie_weights)
+model = RNNModel(args.model_type, ntokens, args.nemb, args.nhid, args.nlayers,
+                 tie_weights=args.tie_weights)
 print(f'**** Loading from {model.get_state_filename(args.save)} ****')
 with open(model.get_state_filename(args.save), 'rb') as f:
     model.load_state_dict(torch.load(f, map_location='cpu'))

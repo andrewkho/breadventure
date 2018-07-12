@@ -12,7 +12,8 @@ parser = argparse.ArgumentParser(description='')
 parser.add_argument('--data', type=str,
                     help='location of the data corpus')
 parser.add_argument('--model', type=str, default='LSTM',
-                    help='type of recurrent net (RNN_TANH, RNN_RELU, LSTM, GRU)')
+                    help='type of recurrent net '
+                         '(RNN_TANH, RNN_RELU, LSTM, GRU)')
 parser.add_argument('--emsize', type=int,
                     help='size of word embeddings')
 parser.add_argument('--nhid', type=int,
@@ -155,8 +156,10 @@ def train():
     record_loss = 0
     for batch, i in enumerate(range(0, train_data.size(0) - 1, args.bptt)):
         data, targets = get_batch(train_data, i)
-        # Starting each batch, we detach the hidden state from how it was previously produced.
-        # If we didn't, the model would try backpropagating all the way to start of the dataset.
+        # Starting each batch, we detach the hidden state from how it was
+        # previously produced.
+        # If we didn't, the model would try backpropagating all the way to
+        # start of the dataset.
         hidden = repackage_hidden(hidden)
         optimizer.zero_grad()   # zero the gradient buffers
         output, hidden = model(data, hidden)
@@ -173,7 +176,9 @@ def train():
             print('| epoch {:3d} | {:5d}/{:5d} batches | ms/batch {:5.2f} | '
                     'loss {:5.2f} | ppl {:8.2f}'.format(
                 epoch, batch, len(train_data) // args.bptt,
-                elapsed * 1000 / args.log_interval, cur_loss, math.exp(cur_loss)))
+                elapsed * 1000 / args.log_interval,
+                cur_loss,
+                math.exp(cur_loss)))
             total_loss = 0
             start_time = time.time()
     train_losses.append(record_loss/train_data.size(0))
@@ -193,8 +198,10 @@ try:
         valid_losses.append(val_loss)
         print('-' * 89)
         print('| end of epoch {:3d} | time: {:5.2f}s | valid loss {:5.2f} | '
-                'valid ppl {:8.2f}'.format(epoch, (time.time() - epoch_start_time),
-                                           val_loss, math.exp(val_loss)))
+                'valid ppl {:8.2f}'.format(epoch,
+                                           (time.time() - epoch_start_time),
+                                           val_loss,
+                                           math.exp(val_loss)))
         print('-' * 89)
         # Save the model if the validation loss is the best we've seen so far.
         if not best_val_loss or val_loss < best_val_loss:
