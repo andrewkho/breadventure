@@ -10,8 +10,9 @@ import torch.onnx
 from gensim.models import KeyedVectors
 
 from tensorboardX import SummaryWriter
+from torch.utils.data import DataLoader
 
-from word2vec_lstm.data import Corpus
+from word2vec_lstm.data import Corpus, RecipesDataset
 from word2vec_lstm.model import RNNModel
 
 logger = logging.getLogger(__name__)
@@ -87,13 +88,17 @@ def run(data_path: str,
 
     corpus = Corpus(data_path)
 
+    trainset = RecipesDataset(corpus.train)
+    validset = RecipesDataset(corpus.valid)
+    testset = RecipesDataset(corpus.test)
+
     logger.info(f'corpus size: {len(corpus.dictionary)}')
 
     # Create embedding matrix from corpus
     w2v_path = 'data/GoogleNews-vectors-negative300.bin'
     logger.info(f'reading word2vec trained model from {w2v_path}')
     w2v_model = KeyedVectors.load_word2vec_format(w2v_path, binary=True)
-    emb_dim = w2v_model
+    emb_dim = w2v_model.vector_size
 
     matrix_len = len(corpus.dictionary)
     weights_matrix = torch.empty((matrix_len, emb_dim))
@@ -109,7 +114,7 @@ def run(data_path: str,
             weights_matrix[i] = torch.tensor(
                 np.random.normal(scale=0.6, size=(emb_dim, )))
 
-    # Starting from sequential data, batchify arranges the dataset into columns_.
+    # Starting from sequential data, batchify arranges the dataset into columns.
     # For instance, with the alphabet as the sequence and batch size 4, we'd get
     # ┌ a g m s ┐
     # │ b h n t │
@@ -120,20 +125,42 @@ def run(data_path: str,
     # These columns are treated as independent by the model, which means that
     # the dependence of e. g. 'g' on 'f' can not be learned, but allows more
     # efficient batch processing.
-
-    def batchify(data, bsz):
-        # Work out how cleanly we can divide the dataset into bsz parts.
-        nbatch = data.size(0) // bsz
-        # Trim off any extra elements that wouldn't cleanly fit (remainders).
-        data = data.narrow(0, 0, nbatch * bsz)
-        # Evenly divide the data across the bsz batches.
-        data = data.view(bsz, -1).t().contiguous()
-        return data.to(device)
+    # def batchify(data, bsz):
+    #     # Work out how cleanly we can divide the dataset into bsz parts.
+    #     nbatch = data.size(0) // bsz
+    #     # Trim off any extra elements that wouldn't cleanly fit (remainders).
+    #     data = data.narrow(0, 0, nbatch * bsz)
+    #     # Evenly divide the data across the bsz batches.
+    #     data = data.view(bsz, -1).t().contiguous()
+    #     return data.to(device)
 
     eval_batch_size = 10
-    train_data = batchify(corpus.train, batch_size)
-    val_data = batchify(corpus.valid, eval_batch_size)
-    test_data = batchify(corpus.test, eval_batch_size)
+
+    def collate_batch(batch):
+        data = torch.stack(batch[:-1]).view(batch_size, bptt).t()
+        target = torch.stack(batch[1:]).view(batch_size, bptt)\
+            .t().contiguous().view(-1)
+        return data, target
+
+    train_loader = DataLoader(trainset,
+                              batch_size=batch_size*bptt+1,
+                              shuffle=True,
+                              num_workers=4,
+                              collate_fn=collate_batch,
+                              drop_last=True)
+    valid_loader = DataLoader(validset,
+                             batch_size=eval_batch_size*bptt+1,
+                             shuffle=True,
+                             num_workers=4,
+                             collate_fn=collate_batch,
+                             drop_last=True)
+    test_loader = DataLoader(testset,
+                              batch_size=eval_batch_size*bptt+1,
+                              shuffle=True,
+                              num_workers=4,
+                              collate_fn=collate_batch,
+                              drop_last=True)
+
 
     ###########################################################################
     # Build the model
@@ -151,7 +178,6 @@ def run(data_path: str,
                             metadata=weights_matrix_labels,
                             global_step=0)
 
-
     criterion = nn.CrossEntropyLoss()
 
     # Adam optimizer
@@ -162,29 +188,12 @@ def run(data_path: str,
     ###########################################################################
 
     def repackage_hidden(h):
-        """Wraps hidden states in new Tensors, to detach them from their history."""
+        """Wraps hidden states in new Tensors, to detach them from their
+        history."""
         if isinstance(h, torch.Tensor):
             return h.detach()
         else:
             return tuple(repackage_hidden(v) for v in h)
-
-
-    # get_batch subdivides the source data into chunks of length args.bptt.
-    # If source is equal to the example output of the batchify function, with
-    # a bptt-limit of 2, we'd get the following two Variables for i = 0:
-    # ┌ a g m s ┐ ┌ b h n t ┐
-    # └ b h n t ┘ └ c i o u ┘
-    # Note that despite the name of the function, the subdivison of data is not
-    # done along the batch dimension (i.e. dimension 1), since that was handled
-    # by the batchify function. The chunks are along dimension 0, corresponding
-    # to the seq_len dimension in the LSTM.
-
-    def get_batch(source, i):
-        seq_len = min(bptt, len(source) - 1 - i)
-        data = source[i:i+seq_len]
-        target = source[i+1:i+1+seq_len].view(-1)
-        return data, target
-
 
     def evaluate(data_source):
         # Turn on evaluation mode which disables dropout.
@@ -193,14 +202,14 @@ def run(data_path: str,
         ntokens = len(corpus.dictionary)
         hidden = model.init_hidden(eval_batch_size)
         with torch.no_grad():
-            for i in range(0, data_source.size(0) - 1, bptt):
-                data, targets = get_batch(data_source, i)
+            # for i in range(0, data_source.size(0) - 1, bptt):
+            #     data, targets = get_batch(data_source, i)
+            for data, targets in data_source:
                 output, hidden = model(data, hidden)
                 output_flat = output.view(-1, ntokens)
                 total_loss += len(data) * criterion(output_flat, targets).item()
                 hidden = repackage_hidden(hidden)
         return total_loss / len(data_source)
-
 
     def train(epoch):
         # Turn on training mode which enables dropout.
@@ -210,8 +219,9 @@ def run(data_path: str,
         ntokens = len(corpus.dictionary)
         hidden = model.init_hidden(batch_size)
         record_loss = 0
-        for batch, i in enumerate(range(0, train_data.size(0) - 1, bptt)):
-            data, targets = get_batch(train_data, i)
+        # for batch, i in enumerate(range(0, train_data.size(0) - 1, bptt)):
+        #     data, targets = get_batch(train_data, i)
+        for i, (data, targets) in enumerate(train_loader):
             # Starting each batch, we detach the hidden state from how it was
             # previously produced.
             # If we didn't, the model would try backpropagating all the way to
@@ -228,21 +238,20 @@ def run(data_path: str,
             tb_writer.add_scalar(
                 'training_loss',
                 loss.item(),
-                global_step=epoch*(len(train_data) // bptt) + batch)
+                global_step=epoch*(len(train_loader)) + i)
 
-            if batch % log_interval == 0 and batch > 0:
+            if i % log_interval == 0 and i > 0:
                 cur_loss = total_loss / log_interval
                 elapsed = time.time() - start_time
                 logger.info('| epoch {:3d} | {:5d}/{:5d} batches '
                       '| ms/batch {:5.2f} '
                       '| loss {:5.2f} | ppl {:8.2f}'.format(
-                    epoch, batch, len(train_data) // bptt,
+                    epoch, i, len(train_loader),
                     elapsed * 1000 / log_interval,
                     cur_loss,
                     math.exp(cur_loss)))
                 total_loss = 0
                 start_time = time.time()
-
 
     # Loop over epochs.
     best_val_loss = None
@@ -255,7 +264,7 @@ def run(data_path: str,
         for epoch in range(0, epochs+1):
             epoch_start_time = time.time()
             train(epoch)
-            val_loss = evaluate(val_data)
+            val_loss = evaluate(valid_loader)
             tb_writer.add_scalar('validation_loss',
                                  val_loss,
                                  global_step=epoch)
@@ -282,7 +291,6 @@ def run(data_path: str,
         logger.info('-' * 89)
         logger.info('Exiting from training early')
 
-
     # Load the best saved model.
     with open(save_path, 'rb') as f:
         model = torch.load(f)
@@ -291,14 +299,14 @@ def run(data_path: str,
         model.rnn.flatten_parameters()
 
     # Run on test data.
-    test_loss = evaluate(test_data)
+    test_loss = evaluate(test_loader)
     tb_writer.add_scalar('test_loss', test_loss)
     tb_writer.add_embedding(mat=model.encoder.weight,
                             metadata=weights_matrix_labels,
                             global_step=1)
     logger.info('=' * 89)
-    logger.info('| End of training | test loss {:5.2f} | test ppl {:8.2f}'.format(
-        test_loss, math.exp(test_loss)))
+    logger.info('| End of training | test loss {:5.2f} '
+                '| test ppl {:8.2f}'.format(test_loss, math.exp(test_loss)))
     logger.info('=' * 89)
 
 

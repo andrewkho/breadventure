@@ -1,13 +1,30 @@
 import os
 import logging
-from typing import List
 
 import torch
-from gensim.models.keyedvectors import KeyedVectors
-
+from torch.utils.data import Dataset
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+
+class RecipesDataset(Dataset):
+    """
+    Holds a 1D LongTensor, each element indexes into a word in vocab
+
+    """
+    def __init__(self, data: torch.LongTensor):
+        """
+        Args:
+            root_dir (string): Directory with recipes {train,valid,test}.txt
+        """
+        self._data = data
+
+    def __len__(self):
+        return len(self._data)
+
+    def __getitem__(self, idx):
+        return self._data[idx]
 
 
 class Dictionary(object):
@@ -56,3 +73,4 @@ class Corpus(object):
                     token += 1
 
         return ids
+
