@@ -1,3 +1,4 @@
+import random
 import sys
 import logging
 import click
@@ -11,6 +12,7 @@ from gensim.models import KeyedVectors
 
 from tensorboardX import SummaryWriter
 from torch.utils.data import DataLoader
+from torch.utils.data.sampler import BatchSampler, Sampler
 
 from word2vec_lstm.data import Corpus, RecipesDataset
 from word2vec_lstm.model import RNNModel
@@ -136,16 +138,35 @@ def run(data_path: str,
 
     def collate_batch(batch_sz):
         def _collate_batch(batch):
-            data = torch.stack(batch[:-1]).view(batch_sz, bptt).t()
-            target = torch.stack(batch[1:]).view(batch_sz, bptt)\
-                .t().contiguous().view(-1)
-            return data, target
+            data = torch.stack(batch).view(-1, batch_sz)
+            return data[:-1,:], data[1:,:].view(-1)
         return _collate_batch
 
+    class SkipSampler(Sampler):
+        def __init__(self, data_source, batch_size: int, rand: bool):
+            super().__init__(data_source)
+            self.data_source = data_source
+            self._batch_size = batch_size
+            self._skip = len(self.data_source) // self._batch_size
+            self._rand = rand
+
+        def __iter__(self):
+            start = 0
+            for i in range(self._skip):
+                for j in range(self._batch_size):
+                    yield start + j*self._skip + i
+
+        def __len__(self):
+            return len(self.data_source) // self._skip
+
     train_loader = DataLoader(trainset,
-                              batch_size=batch_size*bptt+1,
-                              collate_fn=collate_batch(batch_size),
-                              drop_last=True,
+                              batch_sampler=BatchSampler(
+                                  SkipSampler(trainset,
+                                              batch_size=batch_size,
+                                              rand=False),
+                                  batch_size=batch_size*(bptt+1),
+                                  drop_last=True),
+                              collate_fn=collate_batch(batch_size)
                               )
     valid_loader = DataLoader(validset,
                               batch_size=eval_batch_size*bptt+1,
@@ -158,6 +179,21 @@ def run(data_path: str,
                              drop_last=True,
                              )
 
+    # get_batch subdivides the source data into chunks of length args.bptt.
+    # If source is equal to the example output of the batchify function, with
+    # a bptt-limit of 2, we'd get the following two Variables for i = 0:
+    # ┌ a g m s ┐ ┌ b h n t ┐
+    # └ b h n t ┘ └ c i o u ┘
+    # Note that despite the name of the function, the subdivison of data is not
+    # done along the batch dimension (i.e. dimension 1), since that was handled
+    # by the batchify function. The chunks are along dimension 0, corresponding
+    # to the seq_len dimension in the LSTM.
+    #
+    # def get_batch(source, i):
+    #     seq_len = min(bptt, len(source) - 1 - i)
+    #     data = source[i:i + seq_len]
+    #     target = source[i + 1:i + 1 + seq_len].view(-1)
+    #     return data, target
 
     ###########################################################################
     # Build the model
