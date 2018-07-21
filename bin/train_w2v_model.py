@@ -139,7 +139,7 @@ def run(data_path: str,
     def collate_batch(batch_sz):
         def _collate_batch(batch):
             data = torch.stack(batch).view(-1, batch_sz)
-            return data[:-1,:], data[1:,:].view(-1)
+            return data[:-1, :], data[1:, :].view(-1)
         return _collate_batch
 
     class SkipSampler(Sampler):
@@ -157,7 +157,7 @@ def run(data_path: str,
                     yield start + j*self._skip + i
 
         def __len__(self):
-            return len(self.data_source) // self._skip
+            return len(self.data_source)
 
     train_loader = DataLoader(trainset,
                               batch_sampler=BatchSampler(
@@ -169,15 +169,23 @@ def run(data_path: str,
                               collate_fn=collate_batch(batch_size)
                               )
     valid_loader = DataLoader(validset,
-                              batch_size=eval_batch_size*bptt+1,
+                              batch_sampler=BatchSampler(
+                                  SkipSampler(validset,
+                                              batch_size=eval_batch_size,
+                                              rand=False),
+                                  batch_size=eval_batch_size*(bptt+1),
+                                  drop_last=True),
                               collate_fn=collate_batch(eval_batch_size),
-                              drop_last=True,
                               )
     test_loader = DataLoader(testset,
-                             batch_size=eval_batch_size*bptt+1,
-                             collate_fn=collate_batch(eval_batch_size),
-                             drop_last=True,
-                             )
+                              batch_sampler=BatchSampler(
+                                  SkipSampler(testset,
+                                              batch_size=eval_batch_size,
+                                              rand=False),
+                                  batch_size=eval_batch_size*(bptt+1),
+                                  drop_last=True),
+                              collate_fn=collate_batch(eval_batch_size),
+                              )
 
     # get_batch subdivides the source data into chunks of length args.bptt.
     # If source is equal to the example output of the batchify function, with
@@ -240,7 +248,7 @@ def run(data_path: str,
             for data, targets in data_source:
                 output, hidden = model(data, hidden)
                 output_flat = output.view(-1, ntokens)
-                total_loss += len(data) * criterion(output_flat, targets).item()
+                total_loss += criterion(output_flat, targets).item()
                 hidden = repackage_hidden(hidden)
         return total_loss / len(data_source)
 
