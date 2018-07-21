@@ -11,10 +11,9 @@ import torch.onnx
 from gensim.models import KeyedVectors
 
 from tensorboardX import SummaryWriter
-from torch.utils.data import DataLoader
-from torch.utils.data.sampler import BatchSampler, Sampler
 
-from word2vec_lstm.data import Corpus, RecipesDataset
+from util.corpus import Corpus
+from util.torch_tools import create_dataloader, RecipesDataset
 from word2vec_lstm.model import RNNModel
 
 logger = logging.getLogger(__name__)
@@ -114,94 +113,10 @@ def run(data_path: str,
             weights_matrix[i] = torch.tensor(
                 np.random.normal(scale=0.6, size=(emb_dim, )))
 
-    # Starting from sequential data, batchify arranges the dataset into columns.
-    # For instance, with the alphabet as the sequence and batch size 4, we'd get
-    # ┌ a g m s ┐
-    # │ b h n t │
-    # │ c i o u │
-    # │ d j p v │
-    # │ e k q w │
-    # └ f l r x ┘.
-    # These columns are treated as independent by the model, which means that
-    # the dependence of e. g. 'g' on 'f' can not be learned, but allows more
-    # efficient batch processing.
-    # def batchify(data, bsz):
-    #     # Work out how cleanly we can divide the dataset into bsz parts.
-    #     nbatch = data.size(0) // bsz
-    #     # Trim off any extra elements that wouldn't cleanly fit (remainders).
-    #     data = data.narrow(0, 0, nbatch * bsz)
-    #     # Evenly divide the data across the bsz batches.
-    #     data = data.view(bsz, -1).t().contiguous()
-    #     return data.to(device)
-
     eval_batch_size = 10
-
-    def collate_batch(batch_sz):
-        def _collate_batch(batch):
-            data = torch.stack(batch).view(-1, batch_sz)
-            return data[:-1, :], data[1:, :].view(-1)
-        return _collate_batch
-
-    class SkipSampler(Sampler):
-        def __init__(self, data_source, batch_size: int, rand: bool):
-            super().__init__(data_source)
-            self.data_source = data_source
-            self._batch_size = batch_size
-            self._skip = len(self.data_source) // self._batch_size
-            self._rand = rand
-
-        def __iter__(self):
-            start = 0
-            for i in range(self._skip):
-                for j in range(self._batch_size):
-                    yield start + j*self._skip + i
-
-        def __len__(self):
-            return len(self.data_source)
-
-    train_loader = DataLoader(trainset,
-                              batch_sampler=BatchSampler(
-                                  SkipSampler(trainset,
-                                              batch_size=batch_size,
-                                              rand=False),
-                                  batch_size=batch_size*(bptt+1),
-                                  drop_last=True),
-                              collate_fn=collate_batch(batch_size)
-                              )
-    valid_loader = DataLoader(validset,
-                              batch_sampler=BatchSampler(
-                                  SkipSampler(validset,
-                                              batch_size=eval_batch_size,
-                                              rand=False),
-                                  batch_size=eval_batch_size*(bptt+1),
-                                  drop_last=True),
-                              collate_fn=collate_batch(eval_batch_size),
-                              )
-    test_loader = DataLoader(testset,
-                              batch_sampler=BatchSampler(
-                                  SkipSampler(testset,
-                                              batch_size=eval_batch_size,
-                                              rand=False),
-                                  batch_size=eval_batch_size*(bptt+1),
-                                  drop_last=True),
-                              collate_fn=collate_batch(eval_batch_size),
-                              )
-
-    # get_batch subdivides the source data into chunks of length args.bptt.
-    # If source is equal to the example output of the batchify function, with
-    # a bptt-limit of 2, we'd get the following two Variables for i = 0:
-    # ┌ a g m s ┐ ┌ b h n t ┐
-    # └ b h n t ┘ └ c i o u ┘
-    # Note that despite the name of the function, the subdivison of data is not
-    # done along the batch dimension (i.e. dimension 1), since that was handled
-    # by the batchify function. The chunks are along dimension 0, corresponding
-    # to the seq_len dimension in the LSTM.
-    #
-    # def get_batch(source, i):
-    #     seq_len = min(bptt, len(source) - 1 - i)
-    #     data = source[i:i + seq_len]
-    #     target = source[i + 1:i + 1 + seq_len].view(-1)
-    #     return data, target
+    train_loader = create_dataloader(trainset, batch_size, bptt)
+    valid_loader = create_dataloader(validset, eval_batch_size, bptt)
+    test_loader = create_dataloader(testset, eval_batch_size, bptt)
 
     ###########################################################################
     # Build the model
@@ -260,8 +175,6 @@ def run(data_path: str,
         ntokens = len(corpus.dictionary)
         hidden = model.init_hidden(batch_size)
         record_loss = 0
-        # for batch, i in enumerate(range(0, train_data.size(0) - 1, bptt)):
-        #     data, targets = get_batch(train_data, i)
         for i, (data, targets) in enumerate(train_loader):
             # Starting each batch, we detach the hidden state from how it was
             # previously produced.

@@ -2,29 +2,10 @@ import os
 import logging
 
 import torch
-from torch.utils.data import Dataset
+
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
-
-
-class RecipesDataset(Dataset):
-    """
-    Holds a 1D LongTensor, each element indexes into a word in vocab
-
-    """
-    def __init__(self, data: torch.LongTensor):
-        """
-        Args:
-            root_dir (string): Directory with recipes {train,valid,test}.txt
-        """
-        self._data = data
-
-    def __len__(self):
-        return len(self._data)
-
-    def __getitem__(self, idx):
-        return self._data[idx]
 
 
 class Dictionary(object):
@@ -43,7 +24,7 @@ class Dictionary(object):
 
 
 class Corpus(object):
-    def __init__(self, path: str, device: str):
+    def __init__(self, path: str, device: torch.device):
         logger.info('reading train/valid/test')
         self.dictionary = Dictionary()
         self.train = self.tokenize(os.path.join(path, 'train.txt')).to(device)
