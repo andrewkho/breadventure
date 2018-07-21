@@ -94,13 +94,3 @@ class RNNModel(nn.Module):
                     weight.new_zeros(self.nlayers, bsz, self.nhid))
         else:
             return weight.new_zeros(self.nlayers, bsz, self.nhid)
-
-    def _get_param_string(self):
-        return f'em{self.nimp}' \
-               f'_hid{self.nhid}_la{self.nlayers}_dr{self.drop:.2f}'
-
-    def get_filename(self, prefix):
-        return f'{prefix}_{self._get_param_string()}.pt'
-
-    def get_state_filename(self, prefix):
-        return f'{prefix}_{self._get_param_string()}_state.pt'
