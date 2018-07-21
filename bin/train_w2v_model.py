@@ -1,3 +1,5 @@
+import sys
+import logging
 import click
 import numpy as np
 import time
@@ -12,33 +14,39 @@ from tensorboardX import SummaryWriter
 from word2vec_lstm.data import Corpus
 from word2vec_lstm.model import RNNModel
 
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+
 @click.command()
 @click.option('--data_path', type=str,
-                    help='location of the data corpus')
+              help='location of the data corpus')
 @click.option('--model_type', type=str, default='LSTM',
-                    help='type of recurrent net '
-                         '(RNN_TANH, RNN_RELU, LSTM, GRU)')
+              help='type of recurrent net (RNN_TANH, RNN_RELU, LSTM, GRU)')
 @click.option('--nhid', type=int, default=300,
-                    help='number of hidden units per layer')
+              help='number of hidden units per layer')
 @click.option('--nlayers', type=int, default=2,
-                    help='number of layers')
-@click.option('--lr', type=float, default=0.001,
-                    help='initial adam learning rate')
+              help='number of layers')
+@click.option('--lr', type=float, default=0.0001,
+              help='initial adam learning rate')
 @click.option('--clip', type=float, default=0.25,
-                    help='gradient clipping')
-@click.option('--epochs', type=int, default=400,
-                    help='upper epoch limit')
+              help='gradient clipping')
+@click.option('--epochs', type=int, default=70,
+              help='upper epoch limit')
 @click.option('--batch_size', type=int, default=20, metavar='N',
-                    help='batch size')
-@click.option('--bptt', type=int, default=600,
-                    help='sequence length')
-@click.option('--dropout', type=float, default=0.2,
-                    help='dropout applied to layers (0 = no dropout)')
+              help='batch size')
+@click.option('--bptt', type=int, default=100,
+              help='sequence length')
+@click.option('--dropout', type=float, default=0.4,
+              help='dropout applied to layers (0 = no dropout)')
 @click.option('--tied', default=True,
-                    help='tie the word embedding and softmax weights')
+              help='tie the word embedding and softmax weights')
 @click.option('--seed', type=int, default=1111,
-                    help='random seed')
-@click.option('--log-interval', type=int, default=50, help='report interval')
+              help='random seed')
+@click.option('--log-interval', type=int, default=50,
+              help='report interval')
+@click.option('--log-level', type=str, default='info',
+              help='info, debug, warn, etc')
 def run(data_path: str,
         model_type: str,
         nhid: int,
@@ -51,11 +59,27 @@ def run(data_path: str,
         dropout: float,
         tied: bool,
         seed: int,
-        log_interval: int):
-    print(f"nhid: {nhid}")
+        log_interval: int,
+        log_level: str):
+
+    if log_level.lower() == 'debug':
+        logger.setLevel(logging.DEBUG)
+    tb_writer = SummaryWriter(comment=f'_nhid{nhid}_nlayers{nlayers}_'
+                                      f'lr{lr}_clilp{clip}_dropout{dropout}')
+    save_dir = tb_writer.file_writer.get_logdir()
+    save_path = save_dir + '/' + 'model.pt'
+    fhandler = logging.FileHandler(filename=save_dir + '/out.log')
+    logger.addHandler(fhandler)
+    logger.addHandler(logging.StreamHandler(sys.stdout))
+
+
+    logger.info(f'all data saving to saving to {save_dir}')
+    print(f'all data saving to saving to {save_dir}')
+
+
     torch.manual_seed(seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f'using device: {device}')
+    logger.info(f'using device: {device}')
 
     ###########################################################################
     # Load data
@@ -63,13 +87,13 @@ def run(data_path: str,
 
     corpus = Corpus(data_path)
 
-    print(f'corpus size: {len(corpus.dictionary)}')
-    emb_dim = 300
+    logger.info(f'corpus size: {len(corpus.dictionary)}')
 
     # Create embedding matrix from corpus
     w2v_path = 'data/GoogleNews-vectors-negative300.bin'
-    print(f'reading word2vec trained model from {w2v_path}')
+    logger.info(f'reading word2vec trained model from {w2v_path}')
     w2v_model = KeyedVectors.load_word2vec_format(w2v_path, binary=True)
+    emb_dim = w2v_model
 
     matrix_len = len(corpus.dictionary)
     weights_matrix = torch.empty((matrix_len, emb_dim))
@@ -85,8 +109,7 @@ def run(data_path: str,
             weights_matrix[i] = torch.tensor(
                 np.random.normal(scale=0.6, size=(emb_dim, )))
 
-
-    # Starting from sequential data, batchify arranges the dataset into columns.
+    # Starting from sequential data, batchify arranges the dataset into columns_.
     # For instance, with the alphabet as the sequence and batch size 4, we'd get
     # ┌ a g m s ┐
     # │ b h n t │
@@ -107,7 +130,6 @@ def run(data_path: str,
         data = data.view(bsz, -1).t().contiguous()
         return data.to(device)
 
-
     eval_batch_size = 10
     train_data = batchify(corpus.train, batch_size)
     val_data = batchify(corpus.valid, eval_batch_size)
@@ -124,13 +146,11 @@ def run(data_path: str,
                      dropout,
                      tied).to(device)
 
-    print('Create tensorboardX writer')
-    tb_writer = SummaryWriter(comment='test')
-    print('tensorboard: logging initial embedding weights')
+    logger.info('tensorboard: logging initial embedding weights')
     tb_writer.add_embedding(mat=model.encoder.weight,
-                            metadata=weights_matrix_labels)
-    save_path = tb_writer.file_writer.get_logdir() + '/' + 'model.pt'
-    print(f'all data saving to saving to {tb_writer.file_writer.get_logdir()}')
+                            metadata=weights_matrix_labels,
+                            global_step=0)
+
 
     criterion = nn.CrossEntropyLoss()
 
@@ -182,7 +202,7 @@ def run(data_path: str,
         return total_loss / len(data_source)
 
 
-    def train():
+    def train(epoch):
         # Turn on training mode which enables dropout.
         model.train()
         total_loss = 0.
@@ -205,12 +225,15 @@ def run(data_path: str,
             optimizer.step()    # Does the update
             total_loss += loss.item()
             record_loss += loss.item()
-            tb_writer.add_scalar('training_loss', loss.item())
+            tb_writer.add_scalar(
+                'training_loss',
+                loss.item(),
+                global_step=epoch*(len(train_data) // bptt) + batch)
 
             if batch % log_interval == 0 and batch > 0:
                 cur_loss = total_loss / log_interval
                 elapsed = time.time() - start_time
-                print('| epoch {:3d} | {:5d}/{:5d} batches '
+                logger.info('| epoch {:3d} | {:5d}/{:5d} batches '
                       '| ms/batch {:5.2f} '
                       '| loss {:5.2f} | ppl {:8.2f}'.format(
                     epoch, batch, len(train_data) // bptt,
@@ -226,23 +249,25 @@ def run(data_path: str,
 
     valid_losses = []
 
-    print(f'Starting training run...')
+    logger.info(f'Starting training run...')
     # At any point you can hit Ctrl + C to break out of training early.
     try:
         for epoch in range(0, epochs+1):
             epoch_start_time = time.time()
-            train()
+            train(epoch)
             val_loss = evaluate(val_data)
-            tb_writer.add_scalar('validation_loss', val_loss)
+            tb_writer.add_scalar('validation_loss',
+                                 val_loss,
+                                 global_step=epoch)
             valid_losses.append(val_loss)
-            print('-' * 89)
-            print('| end of epoch {:3d} | time: {:5.2f}s '
+            logger.info('-' * 89)
+            logger.info('| end of epoch {:3d} | time: {:5.2f}s '
                   '| valid loss {:5.2f} | valid ppl {:8.2f}'
                   ''.format(epoch,
                             (time.time() - epoch_start_time),
                             val_loss,
                             math.exp(val_loss)))
-            print('-' * 89)
+            logger.info('-' * 89)
             # Save the model if the validation loss is the best we've seen
             # so far.
             if not best_val_loss or val_loss < best_val_loss:
@@ -254,8 +279,8 @@ def run(data_path: str,
                 best_val_loss = val_loss
 
     except KeyboardInterrupt:
-        print('-' * 89)
-        print('Exiting from training early')
+        logger.info('-' * 89)
+        logger.info('Exiting from training early')
 
 
     # Load the best saved model.
@@ -269,11 +294,12 @@ def run(data_path: str,
     test_loss = evaluate(test_data)
     tb_writer.add_scalar('test_loss', test_loss)
     tb_writer.add_embedding(mat=model.encoder.weight,
-                            metadata=weights_matrix_labels)
-    print('=' * 89)
-    print('| End of training | test loss {:5.2f} | test ppl {:8.2f}'.format(
+                            metadata=weights_matrix_labels,
+                            global_step=1)
+    logger.info('=' * 89)
+    logger.info('| End of training | test loss {:5.2f} | test ppl {:8.2f}'.format(
         test_loss, math.exp(test_loss)))
-    print('=' * 89)
+    logger.info('=' * 89)
 
 
 if __name__ == '__main__':
