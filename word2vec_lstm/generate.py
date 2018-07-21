@@ -9,7 +9,7 @@ import argparse
 
 import torch
 
-from .data import Corpus
+from util.corpus import Corpus
 from .model import RNNModel
 
 parser = argparse.ArgumentParser(description='RNN Recipe generator')

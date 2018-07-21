@@ -1,19 +1,18 @@
-import random
-import sys
 import logging
+import math
+import sys
+import time
+
 import click
 import numpy as np
-import time
-import math
 import torch
 import torch.nn as nn
 import torch.onnx
 from gensim.models import KeyedVectors
-
 from tensorboardX import SummaryWriter
 
 from util.corpus import Corpus
-from util.torch_tools import create_dataloader, RecipesDataset
+from util.torch_tools import RecipesDataset, create_dataloader
 from word2vec_lstm.model import RNNModel
 
 logger = logging.getLogger(__name__)
@@ -63,7 +62,6 @@ def run(data_path: str,
         seed: int,
         log_interval: int,
         log_level: str):
-
     if log_level.lower() == 'debug':
         logger.setLevel(logging.DEBUG)
     tb_writer = SummaryWriter(
@@ -111,7 +109,7 @@ def run(data_path: str,
             words_found += 1
         except KeyError:
             weights_matrix[i] = torch.tensor(
-                np.random.normal(scale=0.6, size=(emb_dim, )))
+                np.random.normal(scale=0.6, size=(emb_dim,)))
 
     eval_batch_size = 10
     train_loader = create_dataloader(trainset, batch_size, bptt)
@@ -158,8 +156,6 @@ def run(data_path: str,
         ntokens = len(corpus.dictionary)
         hidden = model.init_hidden(eval_batch_size)
         with torch.no_grad():
-            # for i in range(0, data_source.size(0) - 1, bptt):
-            #     data, targets = get_batch(data_source, i)
             for data, targets in data_source:
                 output, hidden = model(data, hidden)
                 output_flat = output.view(-1, ntokens)
@@ -181,29 +177,27 @@ def run(data_path: str,
             # If we didn't, the model would try backpropagating all the way to
             # start of the dataset.
             hidden = repackage_hidden(hidden)
-            optimizer.zero_grad()   # zero the gradient buffers
+            optimizer.zero_grad()  # zero the gradient buffers
             output, hidden = model(data, hidden)
             loss = criterion(output.view(-1, ntokens), targets)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), clip)
-            optimizer.step()    # Does the update
+            optimizer.step()  # Does the update
             total_loss += loss.item()
             record_loss += loss.item()
             tb_writer.add_scalar(
                 'training_loss',
                 loss.item(),
-                global_step=epoch*(len(train_loader)) + i)
+                global_step=epoch * (len(train_loader)) + i)
 
             if i % log_interval == 0 and i > 0:
                 cur_loss = total_loss / log_interval
                 elapsed = time.time() - start_time
-                logger.info('| epoch {:3d} | {:5d}/{:5d} batches '
-                      '| ms/batch {:5.2f} '
-                      '| loss {:5.2f} | ppl {:8.2f}'.format(
-                    epoch, i, len(train_loader),
-                    elapsed * 1000 / log_interval,
-                    cur_loss,
-                    math.exp(cur_loss)))
+                logger.info(
+                    f'| epoch {epoch:3d} '
+                    f'| {i:5d}/{len(train_loader):5d} batches '
+                    f'| ms/batch {(elapsed * 1000 / log_interval):5.2f} '
+                    f'| loss {cur_loss:5.2f} | ppl {math.exp(cur_loss):8.2f}')
                 total_loss = 0
                 start_time = time.time()
 
@@ -215,7 +209,7 @@ def run(data_path: str,
     logger.info(f'Starting training run...')
     # At any point you can hit Ctrl + C to break out of training early.
     try:
-        for epoch in range(0, epochs+1):
+        for epoch in range(0, epochs + 1):
             epoch_start_time = time.time()
             train(epoch)
             val_loss = evaluate(valid_loader)
@@ -224,20 +218,18 @@ def run(data_path: str,
                                  global_step=epoch)
             valid_losses.append(val_loss)
             logger.info('-' * 89)
-            logger.info('| end of epoch {:3d} | time: {:5.2f}s '
-                  '| valid loss {:5.2f} | valid ppl {:8.2f}'
-                  ''.format(epoch,
-                            (time.time() - epoch_start_time),
-                            val_loss,
-                            math.exp(val_loss)))
+            logger.info(f'| end of epoch {epoch:3d} '
+                        f'| time: {(time.time() - epoch_start_time):5.2f}s '
+                        f'| valid loss {val_loss:5.2f} '
+                        f'| valid ppl {math.exp(val_loss):8.2f}')
             logger.info('-' * 89)
             # Save the model if the validation loss is the best we've seen
             # so far.
             if not best_val_loss or val_loss < best_val_loss:
                 with open(save_path, 'wb') as f:
                     torch.save(model, f)
-                ## Save State Dictionary
-                with open(save_path+'_state', 'wb') as f:
+                # Save State Dictionary
+                with open(save_path + '_state', 'wb') as f:
                     torch.save(model.state_dict(), f)
                 best_val_loss = val_loss
 

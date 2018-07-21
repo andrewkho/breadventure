@@ -64,5 +64,3 @@ def create_dataloader(dataset: Dataset,
                           batch_size=batch_size * (bptt + 1),
                           drop_last=True),
                       collate_fn=collate_batch(batch_size))
-
-
