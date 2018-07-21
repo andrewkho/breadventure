@@ -65,18 +65,16 @@ def run(data_path: str,
 
     if log_level.lower() == 'debug':
         logger.setLevel(logging.DEBUG)
-    tb_writer = SummaryWriter(comment=f'_nhid{nhid}_nlayers{nlayers}_'
-                                      f'lr{lr}_clilp{clip}_dropout{dropout}')
+    tb_writer = SummaryWriter(
+        comment=f'_nhid{nhid}_nlayers{nlayers}_lr{lr}_clip{clip}'
+                f'_bptt{bptt}_dropout{dropout}')
     save_dir = tb_writer.file_writer.get_logdir()
     save_path = save_dir + '/' + 'model.pt'
     fhandler = logging.FileHandler(filename=save_dir + '/out.log')
     logger.addHandler(fhandler)
     logger.addHandler(logging.StreamHandler(sys.stdout))
 
-
-    logger.info(f'all data saving to saving to {save_dir}')
-    print(f'all data saving to saving to {save_dir}')
-
+    logger.info(f'all data saving to {save_dir}')
 
     torch.manual_seed(seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -86,7 +84,7 @@ def run(data_path: str,
     # Load data
     ###########################################################################
 
-    corpus = Corpus(data_path)
+    corpus = Corpus(data_path, device)
 
     trainset = RecipesDataset(corpus.train)
     validset = RecipesDataset(corpus.valid)
@@ -136,30 +134,29 @@ def run(data_path: str,
 
     eval_batch_size = 10
 
-    def collate_batch(batch):
-        data = torch.stack(batch[:-1]).view(batch_size, bptt).t()
-        target = torch.stack(batch[1:]).view(batch_size, bptt)\
-            .t().contiguous().view(-1)
-        return data, target
+    def collate_batch(batch_sz):
+        def _collate_batch(batch):
+            data = torch.stack(batch[:-1]).view(batch_sz, bptt).t()
+            target = torch.stack(batch[1:]).view(batch_sz, bptt)\
+                .t().contiguous().view(-1)
+            return data, target
+        return _collate_batch
 
     train_loader = DataLoader(trainset,
                               batch_size=batch_size*bptt+1,
-                              shuffle=True,
-                              num_workers=4,
-                              collate_fn=collate_batch,
-                              drop_last=True)
+                              collate_fn=collate_batch(batch_size),
+                              drop_last=True,
+                              )
     valid_loader = DataLoader(validset,
-                             batch_size=eval_batch_size*bptt+1,
-                             shuffle=True,
-                             num_workers=4,
-                             collate_fn=collate_batch,
-                             drop_last=True)
-    test_loader = DataLoader(testset,
                               batch_size=eval_batch_size*bptt+1,
-                              shuffle=True,
-                              num_workers=4,
-                              collate_fn=collate_batch,
-                              drop_last=True)
+                              collate_fn=collate_batch(eval_batch_size),
+                              drop_last=True,
+                              )
+    test_loader = DataLoader(testset,
+                             batch_size=eval_batch_size*bptt+1,
+                             collate_fn=collate_batch(eval_batch_size),
+                             drop_last=True,
+                             )
 
 
     ###########################################################################

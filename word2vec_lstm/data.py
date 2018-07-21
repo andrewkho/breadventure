@@ -43,12 +43,12 @@ class Dictionary(object):
 
 
 class Corpus(object):
-    def __init__(self, path: str):
+    def __init__(self, path: str, device: str):
         logger.info('reading train/valid/test')
         self.dictionary = Dictionary()
-        self.train = self.tokenize(os.path.join(path, 'train.txt'))
-        self.valid = self.tokenize(os.path.join(path, 'valid.txt'))
-        self.test = self.tokenize(os.path.join(path, 'test.txt'))
+        self.train = self.tokenize(os.path.join(path, 'train.txt')).to(device)
+        self.valid = self.tokenize(os.path.join(path, 'valid.txt')).to(device)
+        self.test = self.tokenize(os.path.join(path, 'test.txt')).to(device)
 
     def tokenize(self, path):
         """Tokenizes a text file."""
