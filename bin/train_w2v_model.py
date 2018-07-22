@@ -62,11 +62,16 @@ def run(data_path: str,
         seed: int,
         log_interval: int,
         log_level: str):
+    if tied == 'True':
+        tied = True
+    elif tied == 'False':
+        tied = False
+
     if log_level.lower() == 'debug':
         logger.setLevel(logging.DEBUG)
     tb_writer = SummaryWriter(
         comment=f'_nhid{nhid}_nlayers{nlayers}_lr{lr}_clip{clip}'
-                f'_bptt{bptt}_dropout{dropout}')
+                f'_batch_size{batch_size}_bptt{bptt}_dropout{dropout}')
     save_dir = tb_writer.file_writer.get_logdir()
     save_path = save_dir + '/' + 'model.pt'
     fhandler = logging.FileHandler(filename=save_dir + '/out.log')
@@ -110,11 +115,17 @@ def run(data_path: str,
         except KeyError:
             weights_matrix[i] = torch.tensor(
                 np.random.normal(scale=0.6, size=(emb_dim,)))
+    total = len(corpus.dictionary.word2idx)
+    logger.info(f'Found {words_found}/{total} in word2vec already')
+    logger.info(f'added {total-words_found}/{total} new word-vecs')
 
     eval_batch_size = 10
-    train_loader = create_dataloader(trainset, batch_size, bptt)
-    valid_loader = create_dataloader(validset, eval_batch_size, bptt)
-    test_loader = create_dataloader(testset, eval_batch_size, bptt)
+    train_loader = create_dataloader(trainset,
+                                     batch_size, bptt, rand=True)
+    valid_loader = create_dataloader(validset,
+                                     eval_batch_size, bptt, rand=False)
+    test_loader = create_dataloader(testset,
+                                    eval_batch_size, bptt, rand=False)
 
     ###########################################################################
     # Build the model

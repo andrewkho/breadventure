@@ -13,5 +13,5 @@ setup(
     install_requires=['torch',
               'tensorflow',
               'tensorboard-pytorch',
-              'numpy', 'gensim']
+              'numpy', 'gensim', 'click']
     )
