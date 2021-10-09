@@ -108,3 +108,10 @@ data
 
 # storage for tensorboard and models
 runs
+
+*.pt
+archive/old-runs
+
+.DS_Store
+recipes-en-201706
+word_language_model

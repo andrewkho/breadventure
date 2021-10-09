@@ -12,12 +12,16 @@ import click
 def test_params(cmd_path: str, data_path: str):
     nhid_ = [50, 100, 300]
     nlayers_ = [1, 2, 4]
-    lr_ = [0.00001, 0.0001]
-    clip_ = [0.2, 0.6]
-    epochs = 150
-    batch_size_ = [5, 20, 40]
-    bptt_ = [35, 70, 300]
-    dropout = {50: 0.1, 100: 0.3, 300: 0.5}
+    #lr_ = [0.00001, 0.0001]
+    lr_ = [1.e-4]
+    #clip_ = [0.2, 0.6]
+    clip_ = [0.5]
+    epochs = 300
+    #batch_size_ = [5, 20, 40]
+    batch_size_ = [5, 10]
+    #bptt_ = [35, 70, 300]
+    bptt_ = [35, 70]
+    dropout = {50: 0.5, 100: 0.5, 300: 0.5}
 
     log_level = 'info'
 
