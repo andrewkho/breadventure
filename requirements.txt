@@ -1,2 +1,4 @@
-pytorch-lightning
-pytorch-pretrained-bert
+torch
+transformers
+datasets
+jupyter
